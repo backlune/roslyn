@@ -1,4 +1,4 @@
-' Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
+﻿' Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 Imports System.Threading
 Imports Microsoft.CodeAnalysis.Editor.FindUsages
@@ -16,7 +16,11 @@ Namespace Microsoft.CodeAnalysis.Editor.UnitTests.Utilities.GoToHelpers
             _action = action
         End Sub
 
-        Public Function StartSearch(title As String) As FindUsagesContext Implements IStreamingFindUsagesPresenter.StartSearch
+        Public Sub ClearAll() Implements IStreamingFindUsagesPresenter.ClearAll
+            Throw New NotImplementedException()
+        End Sub
+
+        Public Function StartSearch(title As String, alwaysShowDeclarations As Boolean) As FindUsagesContext Implements IStreamingFindUsagesPresenter.StartSearch
             _action()
             Return Context
         End Function

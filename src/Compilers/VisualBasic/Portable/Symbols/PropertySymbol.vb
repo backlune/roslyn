@@ -2,6 +2,7 @@
 
 Imports System.Collections.Generic
 Imports System.Collections.Immutable
+Imports Microsoft.CodeAnalysis.PooledObjects
 Imports Microsoft.CodeAnalysis.Text
 Imports Microsoft.CodeAnalysis.VisualBasic.Symbols
 Imports Microsoft.CodeAnalysis.VisualBasic.Syntax
@@ -78,6 +79,16 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
         Public Overridable ReadOnly Property ParameterCount As Integer
             Get
                 Return Me.Parameters.Length
+            End Get
+        End Property
+
+        ''' <summary>
+        ''' True if the property itself Is excluded from code covarage instrumentation.
+        ''' True for source properties marked with <see cref="AttributeDescription.ExcludeFromCodeCoverageAttribute"/>.
+        ''' </summary>
+        Friend Overridable ReadOnly Property IsDirectlyExcludedFromCodeCoverage As Boolean
+            Get
+                Return False
             End Get
         End Property
 
@@ -493,6 +504,18 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
         Private ReadOnly Property IPropertySymbol_ReturnsByRef As Boolean Implements IPropertySymbol.ReturnsByRef
             Get
                 Return Me.ReturnsByRef
+            End Get
+        End Property
+
+        Private ReadOnly Property IPropertySymbol_ByRefReturnIsReadonly As Boolean Implements IPropertySymbol.ReturnsByRefReadonly
+            Get
+                Return False
+            End Get
+        End Property
+
+        Private ReadOnly Property IPropertySymbol_RefKind As RefKind Implements IPropertySymbol.RefKind
+            Get
+                Return If(Me.ReturnsByRef, RefKind.Ref, RefKind.None)
             End Get
         End Property
 

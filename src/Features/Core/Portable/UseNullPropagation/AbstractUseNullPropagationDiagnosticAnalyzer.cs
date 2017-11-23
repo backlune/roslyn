@@ -8,6 +8,11 @@ using Microsoft.CodeAnalysis.LanguageServices;
 
 namespace Microsoft.CodeAnalysis.UseNullPropagation
 {
+    internal static class UseNullPropagationConstants
+    {
+        public const string WhenPartIsNullable = nameof(WhenPartIsNullable);
+    }
+
     internal abstract class AbstractUseNullPropagationDiagnosticAnalyzer<
         TSyntaxKind,
         TExpressionSyntax,
@@ -33,16 +38,29 @@ namespace Microsoft.CodeAnalysis.UseNullPropagation
         {
         }
 
+        public override bool OpenFileOnly(Workspace workspace) => false;
+        public override DiagnosticAnalyzerCategory GetAnalyzerCategory() => DiagnosticAnalyzerCategory.SemanticDocumentAnalysis;
+
         protected abstract TSyntaxKind GetSyntaxKindToAnalyze();
-        protected abstract ISyntaxFactsService GetSyntaxFactsService();
         protected abstract bool IsEquals(TBinaryExpressionSyntax condition);
         protected abstract bool IsNotEquals(TBinaryExpressionSyntax condition);
         protected abstract bool ShouldAnalyze(ParseOptions options);
 
-        protected override void InitializeWorker(AnalysisContext context)
-            => context.RegisterSyntaxNodeAction(AnalyzeSyntax, GetSyntaxKindToAnalyze());
+        protected abstract ISyntaxFactsService GetSyntaxFactsService();
+        protected abstract ISemanticFactsService GetSemanticFactsService();
 
-        private void AnalyzeSyntax(SyntaxNodeAnalysisContext context)
+        protected override void InitializeWorker(AnalysisContext context)
+        {
+            context.RegisterCompilationStartAction(startContext =>
+            {
+                var expressionTypeOpt = startContext.Compilation.GetTypeByMetadataName("System.Linq.Expressions.Expression`1");
+                startContext.RegisterSyntaxNodeAction(
+                    c => AnalyzeSyntax(c, expressionTypeOpt), GetSyntaxKindToAnalyze());
+            });
+
+        }
+
+        private void AnalyzeSyntax(SyntaxNodeAnalysisContext context, INamedTypeSymbol expressionTypeOpt)
         {
             var conditionalExpression = (TConditionalExpressionSyntax)context.Node;
             if (!ShouldAnalyze(conditionalExpression.SyntaxTree.Options))
@@ -99,7 +117,7 @@ namespace Microsoft.CodeAnalysis.UseNullPropagation
                 return;
             }
 
-            // Needs to be of the forme:
+            // Needs to be of the form:
             //      x == null ? null : ...    or
             //      x != null ? ...  : null;
             if (isEquals && !syntaxFacts.IsNullLiteralExpression(whenTrueNode))
@@ -115,8 +133,31 @@ namespace Microsoft.CodeAnalysis.UseNullPropagation
             var conditionPartToCheck = conditionRightIsNull ? conditionLeft : conditionRight;
             var whenPartToCheck = isEquals ? whenFalseNode : whenTrueNode;
 
-            var whenPartMatch = GetWhenPartMatch(syntaxFacts, conditionPartToCheck, whenPartToCheck);
+            var semanticFacts = GetSemanticFactsService();
+            var semanticModel = context.SemanticModel;
+            var whenPartMatch = GetWhenPartMatch(syntaxFacts, semanticFacts, semanticModel, conditionPartToCheck, whenPartToCheck);
             if (whenPartMatch == null)
+            {
+                return;
+            }
+
+            // ?. is not available in expression-trees.  Disallow the fix in that case.
+
+            var type = semanticModel.GetTypeInfo(conditionalExpression).Type;
+            if (type?.IsValueType == true)
+            {
+                if (!(type is INamedTypeSymbol namedType) || namedType.ConstructedFrom.SpecialType != SpecialType.System_Nullable_T)
+                {
+                    // User has something like:  If(str is nothing, nothing, str.Length)
+                    // In this case, converting to str?.Length changes the type of this from
+                    // int to int?
+                    return;
+                }
+                // But for a nullable type, such as  If(c is nothing, nothing, c.nullable)
+                // converting to c?.nullable doesn't affect the type
+            }
+
+            if (semanticFacts.IsInExpressionTree(semanticModel, conditionNode, expressionTypeOpt, cancellationToken))
             {
                 return;
             }
@@ -126,15 +167,24 @@ namespace Microsoft.CodeAnalysis.UseNullPropagation
                 conditionPartToCheck.GetLocation(),
                 whenPartToCheck.GetLocation());
 
+            var properties = ImmutableDictionary<string, string>.Empty;
+            var whenPartIsNullable = semanticModel.GetTypeInfo(whenPartMatch).Type?.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
+            if (whenPartIsNullable)
+            {
+                properties = properties.Add(UseNullPropagationConstants.WhenPartIsNullable, "");
+            }
+
             context.ReportDiagnostic(Diagnostic.Create(
-                this.CreateDescriptorWithSeverity(option.Notification.Value),
+                this.GetDescriptorWithSeverity(option.Notification.Value),
                 conditionalExpression.GetLocation(),
-                locations));
+                locations,
+                properties));
         }
 
         internal static SyntaxNode GetWhenPartMatch(
-            ISyntaxFactsService syntaxFacts, SyntaxNode expressionToMatch, SyntaxNode whenPart)
+            ISyntaxFactsService syntaxFacts, ISemanticFactsService semanticFacts, SemanticModel semanticModel, SyntaxNode expressionToMatch, SyntaxNode whenPart)
         {
+            expressionToMatch = RemoveObjectCastIfAny(syntaxFacts, semanticModel, expressionToMatch);
             var current = whenPart;
             while (true)
             {
@@ -157,28 +207,40 @@ namespace Microsoft.CodeAnalysis.UseNullPropagation
             }
         }
 
+        private static SyntaxNode RemoveObjectCastIfAny(ISyntaxFactsService syntaxFacts, SemanticModel semanticModel, SyntaxNode node)
+        {
+            if (syntaxFacts.IsCastExpression(node))
+            {
+                syntaxFacts.GetPartsOfCastExpression(node, out var type, out var expression);
+                var typeSymbol = semanticModel.GetTypeInfo(type).Type;
+
+                if (typeSymbol?.SpecialType == SpecialType.System_Object)
+                {
+                    return expression;
+                }
+            }
+
+            return node;
+        }
+
         private static SyntaxNode Unwrap(ISyntaxFactsService syntaxFacts, SyntaxNode node)
         {
-            var invocation = node as TInvocationExpression;
-            if (invocation != null)
+            if (node is TInvocationExpression invocation)
             {
                 return syntaxFacts.GetExpressionOfInvocationExpression(invocation);
             }
 
-            var memberAccess = node as TMemberAccessExpression;
-            if (memberAccess != null)
+            if (node is TMemberAccessExpression memberAccess)
             {
                 return syntaxFacts.GetExpressionOfMemberAccessExpression(memberAccess);
             }
 
-            var conditionalAccess = node as TConditionalAccessExpression;
-            if (conditionalAccess != null)
+            if (node is TConditionalAccessExpression conditionalAccess)
             {
                 return syntaxFacts.GetExpressionOfConditionalAccessExpression(conditionalAccess);
             }
 
-            var elementAccess = node as TElementAccessExpression;
-            if (elementAccess != null)
+            if (node is TElementAccessExpression elementAccess)
             {
                 return syntaxFacts.GetExpressionOfElementAccessExpression(elementAccess);
             }

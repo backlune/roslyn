@@ -1,4 +1,4 @@
-' Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
+﻿' Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 
 Namespace Microsoft.CodeAnalysis.Editor.VisualBasic.UnitTests.ExtractMethod
@@ -248,7 +248,7 @@ End Class</text>
             End Function
 
             <WorkItem(540154, "http://vstfdevdiv:8080/DevDiv2/DevDiv/_workitems/edit/540154")>
-            <Fact(Skip:= "https://github.com/dotnet/roslyn/issues/15223"), Trait(Traits.Feature, Traits.Features.ExtractMethod)>
+            <Fact, Trait(Traits.Feature, Traits.Features.ExtractMethod)>
             Public Async Function BugFix6313_1() As Task
                 Dim code = <text>Imports System
 
@@ -424,7 +424,7 @@ End Class</text>
             End Function
 
             <WorkItem(540154, "http://vstfdevdiv:8080/DevDiv2/DevDiv/_workitems/edit/540154"), WorkItem(541484, "http://vstfdevdiv:8080/DevDiv2/DevDiv/_workitems/edit/541484")>
-            <Fact(Skip:= "https://github.com/dotnet/roslyn/issues/15223"), Trait(Traits.Feature, Traits.Features.ExtractMethod)>
+            <Fact, Trait(Traits.Feature, Traits.Features.ExtractMethod)>
             Public Async Function BugFix6313_6() As Task
                 Dim code = <text>Imports System
 
@@ -494,7 +494,7 @@ End Module</text>
             <Fact, WorkItem(530625, "http://vstfdevdiv:8080/DevDiv2/DevDiv/_workitems/edit/530625"), Trait(Traits.Feature, Traits.Features.ExtractMethod)>
             Public Async Function TestUnreachableEndInFunction() As Task
                 Dim code = <text>Module Program
-    Function Foo() As Integer
+    Function Goo() As Integer
         If True Then
             [|Do : Loop|] ' Extract method
             Exit Function
@@ -505,7 +505,7 @@ End Module</text>
 End Module</text>
 
                 Dim expected = <text>Module Program
-    Function Foo() As Integer
+    Function Goo() As Integer
         If True Then
             NewMethod() ' Extract method
             Exit Function
@@ -538,10 +538,10 @@ Module Module1
         If x = 1 Then
             Return 1
         Else
-            GoTo foo
+            GoTo goo
         End If
         Exit Function
-foo:
+goo:
         Return 2L|]
     End Function
 End Module</text>
@@ -564,10 +564,10 @@ Module Module1
         If x = 1 Then
             Return 1
         Else
-            GoTo foo
+            GoTo goo
         End If
         Exit Function
-foo:
+goo:
         Return 2L
     End Function
 End Module</text>

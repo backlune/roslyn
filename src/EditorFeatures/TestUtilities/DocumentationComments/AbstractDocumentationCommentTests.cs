@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
+﻿// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 using System;
 using System.Linq;
@@ -22,11 +22,11 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.DocumentationComments
         protected abstract char DocumentationCommentCharacter { get; }
 
         internal abstract ICommandHandler CreateCommandHandler(IWaitIndicator waitIndicator, ITextUndoHistoryRegistry undoHistoryRegistry, IEditorOperationsFactoryService editorOperationsFactoryService);
-        protected abstract Task<TestWorkspace> CreateTestWorkspaceAsync(string code);
+        protected abstract TestWorkspace CreateTestWorkspace(string code);
 
-        protected async Task VerifyTypingCharacterAsync(string initialMarkup, string expectedMarkup, bool useTabs = false, bool autoGenerateXmlDocComments = true)
+        protected void VerifyTypingCharacter(string initialMarkup, string expectedMarkup, bool useTabs = false, bool autoGenerateXmlDocComments = true)
         {
-            await VerifyAsync(initialMarkup, expectedMarkup, useTabs, autoGenerateXmlDocComments,
+            Verify(initialMarkup, expectedMarkup, useTabs, autoGenerateXmlDocComments,
                 execute: (view, undoHistoryRegistry, editorOperationsFactoryService, completionService) =>
                 {
                     var commandHandler = CreateCommandHandler(TestWaitIndicator.Default, undoHistoryRegistry, editorOperationsFactoryService) as ICommandHandler<TypeCharCommandArgs>;
@@ -38,23 +38,24 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.DocumentationComments
                 });
         }
 
-        protected async Task VerifyPressingEnterAsync(string initialMarkup, string expectedMarkup, bool useTabs = false, bool autoGenerateXmlDocComments = true)
+        protected void VerifyPressingEnter(string initialMarkup, string expectedMarkup, bool useTabs = false, bool autoGenerateXmlDocComments = true,
+            Action<TestWorkspace> setOptionsOpt = null)
         {
-            await VerifyAsync(initialMarkup, expectedMarkup, useTabs, autoGenerateXmlDocComments,
+            Verify(initialMarkup, expectedMarkup, useTabs, autoGenerateXmlDocComments,
+                setOptionsOpt: setOptionsOpt,
                 execute: (view, undoHistoryRegistry, editorOperationsFactoryService, completionService) =>
                 {
                     var commandHandler = CreateCommandHandler(TestWaitIndicator.Default, undoHistoryRegistry, editorOperationsFactoryService) as ICommandHandler<ReturnKeyCommandArgs>;
 
                     var commandArgs = new ReturnKeyCommandArgs(view, view.TextBuffer);
                     var nextHandler = CreateInsertTextHandler(view, "\r\n");
-
                     commandHandler.ExecuteCommand(commandArgs, nextHandler);
                 });
         }
 
-        protected async Task VerifyInsertCommentCommandAsync(string initialMarkup, string expectedMarkup, bool useTabs = false, bool autoGenerateXmlDocComments = true)
+        protected void VerifyInsertCommentCommand(string initialMarkup, string expectedMarkup, bool useTabs = false, bool autoGenerateXmlDocComments = true)
         {
-            await VerifyAsync(initialMarkup, expectedMarkup, useTabs, autoGenerateXmlDocComments,
+            Verify(initialMarkup, expectedMarkup, useTabs, autoGenerateXmlDocComments,
                 execute: (view, undoHistoryRegistry, editorOperationsFactoryService, completionService) =>
                 {
                     var commandHandler = CreateCommandHandler(TestWaitIndicator.Default, undoHistoryRegistry, editorOperationsFactoryService) as ICommandHandler<InsertCommentCommandArgs>;
@@ -66,37 +67,37 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.DocumentationComments
                 });
         }
 
-        protected async Task VerifyOpenLineAboveAsync(string initialMarkup, string expectedMarkup, bool useTabs = false, bool autoGenerateXmlDocComments = true)
+        protected void VerifyOpenLineAbove(string initialMarkup, string expectedMarkup, bool useTabs = false, bool autoGenerateXmlDocComments = true)
         {
-            await VerifyAsync(initialMarkup, expectedMarkup, useTabs, autoGenerateXmlDocComments,
+            Verify(initialMarkup, expectedMarkup, useTabs, autoGenerateXmlDocComments,
                 execute: (view, undoHistoryRegistry, editorOperationsFactoryService, completionService) =>
                 {
                     var commandHandler = CreateCommandHandler(TestWaitIndicator.Default, undoHistoryRegistry, editorOperationsFactoryService) as ICommandHandler<OpenLineAboveCommandArgs>;
 
                     var commandArgs = new OpenLineAboveCommandArgs(view, view.TextBuffer);
-                    Action nextHandler = () =>
+                    void nextHandler()
                     {
                         var editorOperations = editorOperationsFactoryService.GetEditorOperations(view);
                         editorOperations.OpenLineAbove();
-                    };
+                    }
 
                     commandHandler.ExecuteCommand(commandArgs, nextHandler);
                 });
         }
 
-        protected async Task VerifyOpenLineBelowAsync(string initialMarkup, string expectedMarkup, bool useTabs = false, bool autoGenerateXmlDocComments = true)
+        protected void VerifyOpenLineBelow(string initialMarkup, string expectedMarkup, bool useTabs = false, bool autoGenerateXmlDocComments = true)
         {
-            await VerifyAsync(initialMarkup, expectedMarkup, useTabs, autoGenerateXmlDocComments,
+            Verify(initialMarkup, expectedMarkup, useTabs, autoGenerateXmlDocComments,
                 execute: (view, undoHistoryRegistry, editorOperationsFactoryService, completionService) =>
                 {
                     var commandHandler = CreateCommandHandler(TestWaitIndicator.Default, undoHistoryRegistry, editorOperationsFactoryService) as ICommandHandler<OpenLineBelowCommandArgs>;
 
                     var commandArgs = new OpenLineBelowCommandArgs(view, view.TextBuffer);
-                    Action nextHandler = () =>
+                    void nextHandler()
                     {
                         var editorOperations = editorOperationsFactoryService.GetEditorOperations(view);
                         editorOperations.OpenLineBelow();
-                    };
+                    }
 
                     commandHandler.ExecuteCommand(commandArgs, nextHandler);
                 });
@@ -112,10 +113,11 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.DocumentationComments
             };
         }
 
-        private async Task VerifyAsync(string initialMarkup, string expectedMarkup, bool useTabs, bool autoGenerateXmlDocComments,
-            Action<IWpfTextView, ITextUndoHistoryRegistry, IEditorOperationsFactoryService, IAsyncCompletionService> execute)
+        private void Verify(string initialMarkup, string expectedMarkup, bool useTabs, bool autoGenerateXmlDocComments,
+            Action<IWpfTextView, ITextUndoHistoryRegistry, IEditorOperationsFactoryService, IAsyncCompletionService> execute,
+            Action<TestWorkspace> setOptionsOpt = null)
         {
-            using (var workspace = await CreateTestWorkspaceAsync(initialMarkup))
+            using (var workspace = CreateTestWorkspace(initialMarkup))
             {
                 var testDocument = workspace.Documents.Single();
 
@@ -143,6 +145,8 @@ namespace Microsoft.CodeAnalysis.Editor.UnitTests.DocumentationComments
                 options = options.WithChangedOption(FeatureOnOffOptions.AutoXmlDocCommentGeneration, testDocument.Project.Language, autoGenerateXmlDocComments);
 
                 workspace.Options = options;
+
+                setOptionsOpt?.Invoke(workspace);
 
                 execute(
                     view,

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
+# Copyright (c) .NET Foundation and contributors. All rights reserved.
+# Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
 set -e
+set -u
 
 usage()
 {
@@ -7,42 +11,44 @@ usage()
     echo "usage: cibuild.sh [options]"
     echo ""
     echo "Options"
-    echo "  --debug     Build Debug (default)"
-    echo "  --release   Build Release"
-    echo "  --nocache   Force download of toolsets"
-
+    echo "  --debug               Build Debug (default)"
+    echo "  --release             Build Release"
 }
 
-BUILD_CONFIGURATION=Debug
-USE_CACHE=true
+THIS_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${THIS_DIR}"/build/scripts/build-utils.sh
+ROOT_PATH="$(get_repo_dir)"
 
-MAKE="make"
-if [[ $OSTYPE == *[Bb][Ss][Dd]* ]]; then
-    MAKE="gmake"
+BUILD_CONFIGURATION=--debug
+
+# $HOME is unset when running the mac unit tests.
+if [[ -z "${HOME+x}" ]]
+then
+    # Note that while ~ usually refers to $HOME, in the case where $HOME is unset,
+    # it looks up the current user's home dir, which is what we want.
+    # https://www.gnu.org/software/bash/manual/html_node/Tilde-Expansion.html
+    export HOME="$(cd ~ && pwd)"
 fi
 
-# LTTNG is the logging infrastructure used by coreclr.  Need this variable set 
-# so it doesn't output warnings to the console.
-export LTTNG_HOME=$HOME
+# There's no reason to send telemetry or prime a local package cach when building
+# in CI.
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
 
 while [[ $# > 0 ]]
 do
-    opt="$1"
-    case $opt in
+    opt="$(echo "$1" | awk '{print tolower($0)}')"
+    case "$opt" in
         -h|--help)
         usage
         exit 1
         ;;
         --debug)
-        BUILD_CONFIGURATION=Debug
+        BUILD_CONFIGURATION=--debug
         shift 1
         ;;
         --release)
-        BUILD_CONFIGURATION=Release
-        shift 1
-        ;;
-        --nocache)
-        USE_CACHE=false
+        BUILD_CONFIGURATION=--release
         shift 1
         ;;
         *)
@@ -52,26 +58,14 @@ do
     esac
 done
 
-MAKE_ARGS="BUILD_CONFIGURATION=$BUILD_CONFIGURATION"
-
-if [ "$CLEAN_RUN" == "true" ]; then
-    echo Clean out the enlistment
-    git clean -dxf . 
-fi
-
-if [ "$USE_CACHE" == "false" ]; then
-    echo Clean out the toolsets
-    $MAKE clean_toolset
-fi
-
 echo Building this commit:
 git show --no-patch --pretty=raw HEAD
 
-echo Building Bootstrap
-$MAKE bootstrap $MAKE_ARGS 
+# obtain_dotnet.sh puts the right dotnet on the PATH
+FORCE_DOWNLOAD=true
+source "${ROOT_PATH}"/build/scripts/obtain_dotnet.sh
 
-echo Building CrossPlatform.sln
-$MAKE all $MAKE_ARGS BOOTSTRAP=true BUILD_LOG_PATH=Binaries/Build.log
+"${ROOT_PATH}"/build.sh --restore --bootstrap --build --test "${BUILD_CONFIGURATION}"
 
-$MAKE test
-
+echo "Killing VBCSCompiler"
+dotnet "${ROOT_PATH}"/Binaries/Bootstrap/bincore/VBCSCompiler.dll -shutdown

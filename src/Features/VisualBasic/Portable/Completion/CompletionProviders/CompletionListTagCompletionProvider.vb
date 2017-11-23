@@ -1,4 +1,4 @@
-' Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
+﻿' Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 Imports System.Collections.Immutable
 Imports System.Threading
@@ -16,6 +16,10 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Completion.Providers
         Protected Overrides Function GetPreselectedSymbolsWorker(context As SyntaxContext, position As Integer, options As OptionSet, cancellationToken As CancellationToken) As Task(Of ImmutableArray(Of ISymbol))
             If context.SyntaxTree.IsObjectCreationTypeContext(position, cancellationToken) OrElse
                 context.SyntaxTree.IsInNonUserCode(position, cancellationToken) Then
+                Return SpecializedTasks.EmptyImmutableArray(Of ISymbol)()
+            End If
+
+            If context.TargetToken.IsKind(SyntaxKind.DotToken) Then
                 Return SpecializedTasks.EmptyImmutableArray(Of ISymbol)()
             End If
 
@@ -67,15 +71,14 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Completion.Providers
         End Function
 
         Protected Overrides Function CreateItem(displayText As String, insertionText As String, symbols As List(Of ISymbol), context As SyntaxContext, preselect As Boolean, supportedPlatformData As SupportedPlatformData) As CompletionItem
-            Return SymbolCompletionItem.Create(
+            Return SymbolCompletionItem.CreateWithSymbolId(
                 displayText:=displayText,
                 insertionText:=insertionText,
                 filterText:=GetFilterText(symbols(0), displayText, context),
                 symbols:=symbols,
+                rules:=CompletionItemRules.Default.WithMatchPriority(MatchPriority.Preselect),
                 contextPosition:=context.Position,
                 sortText:=displayText,
-                glyph:=Glyph.EnumMember,
-                matchPriority:=MatchPriority.Preselect,
                 supportedPlatforms:=supportedPlatformData)
         End Function
     End Class

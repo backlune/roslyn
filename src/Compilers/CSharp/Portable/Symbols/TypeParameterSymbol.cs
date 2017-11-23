@@ -477,6 +477,24 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             }
         }
 
+        internal sealed override bool IsByRefLikeType
+        {
+            get
+            {
+                return false;
+            }
+        }
+
+        internal sealed override bool IsReadOnly
+        {
+            get
+            {
+                // even if T is indirectly constrained to a struct, 
+                // we only can use members via constrained calls, so "true" would have no effect
+                return false;
+            }
+        }
+
         internal sealed override ObsoleteAttributeData ObsoleteAttributeData
         {
             get { return null; }
@@ -522,17 +540,6 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         public override int GetHashCode()
         {
             return Hash.Combine(ContainingSymbol, Ordinal);
-        }
-
-        /// <summary>
-        /// Returns a bag of applied custom attributes and data decoded from well-known attributes. Returns null if there are no attributes applied on the symbol.
-        /// </summary>
-        /// <remarks>
-        /// Forces binding and decoding of attributes.
-        /// </remarks>
-        internal virtual CustomAttributesBag<CSharpAttributeData> GetAttributesBag()
-        {
-            return null;
         }
 
         #region ITypeParameterTypeSymbol Members

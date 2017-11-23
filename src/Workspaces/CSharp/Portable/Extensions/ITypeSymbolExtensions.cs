@@ -54,6 +54,17 @@ namespace Microsoft.CodeAnalysis.CSharp.Extensions
             return SyntaxFactory.RefType(refKeyword, underlyingType);
         }
 
+        public static TypeSyntax GenerateRefReadOnlyTypeSyntax(
+            this INamespaceOrTypeSymbol symbol)
+        {
+            var underlyingType = GenerateTypeSyntax(symbol)
+                .WithPrependedLeadingTrivia(SyntaxFactory.ElasticMarker)
+                .WithAdditionalAnnotations(Simplifier.Annotation);
+            var refKeyword = SyntaxFactory.Token(SyntaxKind.RefKeyword);
+            var readOnlyKeyword = SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword);
+            return SyntaxFactory.RefType(refKeyword, readOnlyKeyword, underlyingType);
+        }
+
         public static bool ContainingTypesOrSelfHasUnsafeKeyword(this ITypeSymbol containingType)
         {
             do
@@ -137,9 +148,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Extensions
         }
 
         public static TypeSyntax GenerateTypeSyntaxOrVar(
-            this ITypeSymbol symbol, OptionSet options, bool typeIsApperant)
+            this ITypeSymbol symbol, OptionSet options, bool typeIsApparent)
         {
-            var useVar = IsVarDesired(symbol, options, typeIsApperant);
+            var useVar = IsVarDesired(symbol, options, typeIsApparent);
 
             return useVar
                 ? SyntaxFactory.IdentifierName("var")

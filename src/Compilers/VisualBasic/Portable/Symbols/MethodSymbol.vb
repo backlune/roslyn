@@ -2,6 +2,7 @@
 
 Imports System.Collections.Immutable
 Imports System.Runtime.InteropServices
+Imports Microsoft.CodeAnalysis.PooledObjects
 Imports Microsoft.CodeAnalysis.Symbols
 Imports Microsoft.CodeAnalysis.VisualBasic.Symbols
 
@@ -236,6 +237,16 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
         Friend ReadOnly Property IsConditional As Boolean
             Get
                 Return Me.GetAppliedConditionalSymbols.Any()
+            End Get
+        End Property
+
+        ''' <summary>
+        ''' True if the method itself Is excluded from code covarage instrumentation.
+        ''' True for source methods marked with <see cref="AttributeDescription.ExcludeFromCodeCoverageAttribute"/>.
+        ''' </summary>
+        Friend Overridable ReadOnly Property IsDirectlyExcludedFromCodeCoverage As Boolean
+            Get
+                Return False
             End Get
         End Property
 
@@ -936,6 +947,18 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
         Private ReadOnly Property IMethodSymbol_ReturnsByRef As Boolean Implements IMethodSymbol.ReturnsByRef
             Get
                 Return Me.ReturnsByRef
+            End Get
+        End Property
+
+        Private ReadOnly Property IMethodSymbol_ReturnsByReadonlyRef As Boolean Implements IMethodSymbol.ReturnsByRefReadonly
+            Get
+                Return False
+            End Get
+        End Property
+
+        Private ReadOnly Property IMethodSymbol_RefKind As RefKind Implements IMethodSymbol.RefKind
+            Get
+                Return If(Me.ReturnsByRef, RefKind.Ref, RefKind.None)
             End Get
         End Property
 

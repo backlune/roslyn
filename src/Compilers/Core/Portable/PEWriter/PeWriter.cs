@@ -1,19 +1,20 @@
-// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
+﻿// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using Microsoft.CodeAnalysis;
-using EmitContext = Microsoft.CodeAnalysis.Emit.EmitContext;
 using Microsoft.CodeAnalysis.Emit;
+using static Microsoft.Cci.SigningUtilities;
+using EmitContext = Microsoft.CodeAnalysis.Emit.EmitContext;
 
 namespace Microsoft.Cci
 {
@@ -26,21 +27,24 @@ namespace Microsoft.Cci
 
     internal static class PeWriter
     {
-        public static bool WritePeToStream(
+        internal static bool WritePeToStream(
             EmitContext context,
             CommonMessageProvider messageProvider,
             Func<Stream> getPeStream,
             Func<Stream> getPortablePdbStreamOpt,
             PdbWriter nativePdbWriterOpt,
             string pdbPathOpt,
-            bool allowMissingMethodBodies,
+            bool metadataOnly,
             bool isDeterministic,
+            bool emitTestCoverageData,
+            RSAParameters? privateKeyOpt,
             CancellationToken cancellationToken)
         {
             // If PDB writer is given, we have to have PDB path.
             Debug.Assert(nativePdbWriterOpt == null || pdbPathOpt != null);
 
-            var mdWriter = FullMetadataWriter.Create(context, messageProvider, allowMissingMethodBodies, isDeterministic, getPortablePdbStreamOpt != null, cancellationToken);
+            var mdWriter = FullMetadataWriter.Create(context, messageProvider, metadataOnly, isDeterministic,
+                emitTestCoverageData, getPortablePdbStreamOpt != null, cancellationToken);
 
             var properties = context.Module.SerializationProperties;
 
@@ -67,7 +71,7 @@ namespace Microsoft.Cci
             MethodDefinitionHandle entryPointHandle;
             MethodDefinitionHandle debugEntryPointHandle;
             mdWriter.GetEntryPoints(out entryPointHandle, out debugEntryPointHandle);
-            
+
             if (!debugEntryPointHandle.IsNil)
             {
                 nativePdbWriterOpt?.SetEntryPoint((uint)MetadataTokens.GetToken(debugEntryPointHandle));
@@ -75,6 +79,11 @@ namespace Microsoft.Cci
 
             if (nativePdbWriterOpt != null)
             {
+                if (context.Module.SourceLinkStreamOpt != null)
+                {
+                    nativePdbWriterOpt.EmbedSourceLink(context.Module.SourceLinkStreamOpt);
+                }
+
                 if (mdWriter.Module.OutputKind == OutputKind.WindowsRuntimeMetadata)
                 {
                     // Dev12: If compiling to winmdobj, we need to add to PDB source spans of
@@ -90,8 +99,7 @@ namespace Microsoft.Cci
 #endif
                 }
 
-                // embedded text not currently supported for native PDB and we should have validated that
-                Debug.Assert(!mdWriter.Module.DebugDocumentsBuilder.EmbeddedDocuments.Any());
+                nativePdbWriterOpt.WriteRemainingEmbeddedDocuments(mdWriter.Module.DebugDocumentsBuilder.EmbeddedDocuments);
             }
 
             Stream peStream = getPeStream();
@@ -139,7 +147,7 @@ namespace Microsoft.Cci
                 mdWriter.AddRemainingEmbeddedDocuments(mdWriter.Module.DebugDocumentsBuilder.EmbeddedDocuments);
 
                 var portablePdbBlob = new BlobBuilder();
-                var portablePdbBuilder = mdWriter.GetPortablePdbBuilder(metadataRootBuilder.Sizes, debugEntryPointHandle, deterministicIdProvider);
+                var portablePdbBuilder = mdWriter.GetPortablePdbBuilder(metadataRootBuilder.Sizes.RowCounts, debugEntryPointHandle, deterministicIdProvider);
                 pdbContentId = portablePdbBuilder.Serialize(portablePdbBlob);
                 portablePdbVersion = portablePdbBuilder.FormatVersion;
 
@@ -154,7 +162,14 @@ namespace Microsoft.Cci
                     Stream portablePdbStream = getPortablePdbStreamOpt();
                     if (portablePdbStream != null)
                     {
-                        portablePdbBlob.WriteContentTo(portablePdbStream);
+                        try
+                        {
+                            portablePdbBlob.WriteContentTo(portablePdbStream);
+                        }
+                        catch (Exception e) when (!(e is OperationCanceledException))
+                        {
+                            throw new PdbWritingException(e);
+                        }
                     }
                 }
             }
@@ -184,7 +199,16 @@ namespace Microsoft.Cci
                 debugDirectoryBuilder = null;
             }
 
-            var peBuilder = new ManagedPEBuilder(
+            var strongNameProvider = context.Module.CommonCompilation.Options.StrongNameProvider;
+
+            var corFlags = properties.CorFlags;
+            if (privateKeyOpt != null)
+            {
+                Debug.Assert(strongNameProvider.Capability == SigningCapability.SignsPeBuilder);
+                corFlags |= CorFlags.StrongNameSigned;
+            }
+
+            var peBuilder = new ExtendedPEBuilder(
                 peHeaderBuilder,
                 metadataRootBuilder,
                 ilBuilder,
@@ -192,15 +216,21 @@ namespace Microsoft.Cci
                 managedResourceBuilder,
                 CreateNativeResourceSectionSerializer(context.Module),
                 debugDirectoryBuilder,
-                CalculateStrongNameSignatureSize(context.Module),
+                CalculateStrongNameSignatureSize(context.Module, privateKeyOpt),
                 entryPointHandle,
-                properties.CorFlags,
-                deterministicIdProvider);
+                corFlags,
+                deterministicIdProvider,
+                metadataOnly && !context.IncludePrivateMembers);
 
             var peBlob = new BlobBuilder();
-            var peContentId = peBuilder.Serialize(peBlob);
+            var peContentId = peBuilder.Serialize(peBlob, out Blob mvidSectionFixup);
 
-            PatchModuleVersionIds(mvidFixup, mvidStringFixup, peContentId.Guid);
+            if (privateKeyOpt != null)
+            {
+                strongNameProvider.SignPeBuilder(peBuilder, peBlob, privateKeyOpt.Value);
+            }
+
+            PatchModuleVersionIds(mvidFixup, mvidSectionFixup, mvidStringFixup, peContentId.Guid);
 
             try
             {
@@ -214,11 +244,18 @@ namespace Microsoft.Cci
             return true;
         }
 
-        private static void PatchModuleVersionIds(Blob guidFixup, Blob stringFixup, Guid mvid)
+        private static void PatchModuleVersionIds(Blob guidFixup, Blob guidSectionFixup, Blob stringFixup, Guid mvid)
         {
             if (!guidFixup.IsDefault)
             {
                 var writer = new BlobWriter(guidFixup);
+                writer.WriteGuid(mvid);
+                Debug.Assert(writer.RemainingBytes == 0);
+            }
+
+            if (!guidSectionFixup.IsDefault)
+            {
+                var writer = new BlobWriter(guidSectionFixup);
                 writer.WriteGuid(mvid);
                 Debug.Assert(writer.RemainingBytes == 0);
             }
@@ -246,8 +283,8 @@ namespace Microsoft.Cci
             // or .OBJ (the output of running cvtres.exe on a .RES file). A .RES file is parsed and processed into
             // a set of objects implementing IWin32Resources. These are then ordered and the final image form is constructed
             // and written to the resource section. Resources in .OBJ form are already very close to their final output
-            // form. Rather than reading them and parsing them into a set of objects similar to those produced by 
-            // processing a .RES file, we process them like the native linker would, copy the relevant sections from 
+            // form. Rather than reading them and parsing them into a set of objects similar to those produced by
+            // processing a .RES file, we process them like the native linker would, copy the relevant sections from
             // the .OBJ into our output and apply some fixups.
 
             var nativeResourceSectionOpt = module.Win32ResourceSection;
@@ -295,30 +332,6 @@ namespace Microsoft.Cci
             {
                 NativeResourceWriter.SerializeWin32Resources(builder, _resources, location.RelativeVirtualAddress);
             }
-        }
-
-        private static int CalculateStrongNameSignatureSize(CommonPEModuleBuilder module)
-        {
-            ISourceAssemblySymbolInternal assembly = module.SourceAssemblyOpt;
-            if (assembly == null)
-            {
-                return 0;
-            }
-
-            // EDMAURER the count of characters divided by two because the each pair of characters will turn in to one byte.
-            int keySize = (assembly.SignatureKey == null) ? 0 : assembly.SignatureKey.Length / 2;
-
-            if (keySize == 0)
-            {
-                keySize = assembly.Identity.PublicKey.Length;
-            }
-
-            if (keySize == 0)
-            {
-                return 0;
-            }
-
-            return (keySize < 128 + 32) ? 128 : keySize - 32;
         }
     }
 }

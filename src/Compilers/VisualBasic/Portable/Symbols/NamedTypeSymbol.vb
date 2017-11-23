@@ -5,6 +5,7 @@ Imports System.Collections.Immutable
 Imports System.Runtime.InteropServices
 Imports System.Text
 Imports System.Threading
+Imports Microsoft.CodeAnalysis.PooledObjects
 Imports Microsoft.CodeAnalysis.Text
 Imports Microsoft.CodeAnalysis.VisualBasic.Symbols
 Imports Microsoft.CodeAnalysis.VisualBasic.Syntax
@@ -166,6 +167,16 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
         End Property
 
         ''' <summary>
+        ''' True if the type itself Is excluded from code covarage instrumentation.
+        ''' True for source types marked with <see cref="AttributeDescription.ExcludeFromCodeCoverageAttribute"/>.
+        ''' </summary>
+        Friend Overridable ReadOnly Property IsDirectlyExcludedFromCodeCoverage As Boolean
+            Get
+                Return False
+            End Get
+        End Property
+
+        ''' <summary>
         ''' Should the name returned by Name property be mangled with [`arity] suffix in order to get metadata name.
         ''' Must return False for a type with Arity == 0.
         ''' </summary>
@@ -261,9 +272,14 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Symbols
         Public MustOverride ReadOnly Property MightContainExtensionMethods As Boolean Implements INamedTypeSymbol.MightContainExtensionMethods
 
         ''' <summary>
+        ''' Returns True if the type is marked by 'Microsoft.CodeAnalysis.Embedded' attribute. 
+        ''' </summary>
+        Friend MustOverride ReadOnly Property HasCodeAnalysisEmbeddedAttribute As Boolean
+
+        ''' <summary>
         ''' Returns True if the type is marked by 'Microsoft.VisualBasic.Embedded' attribute. 
         ''' </summary>
-        Friend MustOverride ReadOnly Property HasEmbeddedAttribute As Boolean
+        Friend MustOverride ReadOnly Property HasVisualBasicEmbeddedAttribute As Boolean
 
         ''' <summary>
         ''' A Named type is an extensible interface if both the following are true:

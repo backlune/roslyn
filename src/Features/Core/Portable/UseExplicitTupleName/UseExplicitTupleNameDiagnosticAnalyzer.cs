@@ -7,7 +7,7 @@ using System.Reflection;
 using System.Threading;
 using Microsoft.CodeAnalysis.CodeStyle;
 using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.Semantics;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace Microsoft.CodeAnalysis.UseExplicitTupleName
 {
@@ -16,8 +16,6 @@ namespace Microsoft.CodeAnalysis.UseExplicitTupleName
     {
         public const string ElementName = nameof(ElementName);
 
-        private static MethodInfo s_registerMethod = typeof(AnalysisContext).GetTypeInfo().GetDeclaredMethod("RegisterOperationActionImmutableArrayInternal");
-
         public UseExplicitTupleNameDiagnosticAnalyzer() 
             : base(IDEDiagnosticIds.UseExplicitTupleNameDiagnosticId,
                    new LocalizableResourceString(nameof(FeaturesResources.Use_explicitly_provided_tuple_name), FeaturesResources.ResourceManager, typeof(FeaturesResources)),
@@ -25,12 +23,11 @@ namespace Microsoft.CodeAnalysis.UseExplicitTupleName
         {
         }
 
+        public override bool OpenFileOnly(Workspace workspace) => false;
+        public override DiagnosticAnalyzerCategory GetAnalyzerCategory() => DiagnosticAnalyzerCategory.SemanticSpanAnalysis;
+
         protected override void InitializeWorker(AnalysisContext context)
-            => s_registerMethod.Invoke(context, new object[]
-               {
-                   new Action<OperationAnalysisContext>(AnalyzeOperation),
-                   ImmutableArray.Create(OperationKind.FieldReferenceExpression)
-               });
+            => context.RegisterOperationAction(AnalyzeOperation, OperationKind.FieldReference);
 
         private void AnalyzeOperation(OperationAnalysisContext context)
         {
@@ -49,7 +46,7 @@ namespace Microsoft.CodeAnalysis.UseExplicitTupleName
                 return;
             }
 
-            var fieldReferenceOperation = (IFieldReferenceExpression)context.Operation;
+            var fieldReferenceOperation = (IFieldReferenceOperation)context.Operation;
 
             var field = fieldReferenceOperation.Field;
             if (field.ContainingType.IsTupleType)
@@ -66,7 +63,7 @@ namespace Microsoft.CodeAnalysis.UseExplicitTupleName
                             var properties = ImmutableDictionary<string, string>.Empty.Add(
                                 nameof(ElementName), namedField.Name);
                             context.ReportDiagnostic(Diagnostic.Create(
-                                CreateDescriptorWithSeverity(severity),
+                                GetDescriptorWithSeverity(severity),
                                 nameNode.GetLocation(),
                                 properties));
                         }

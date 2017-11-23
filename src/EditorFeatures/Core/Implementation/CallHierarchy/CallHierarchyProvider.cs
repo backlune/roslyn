@@ -61,11 +61,10 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.CallHierarchy
 
         private ISymbol GetTargetSymbol(ISymbol symbol)
         {
-            if (symbol is IMethodSymbol)
+            if (symbol is IMethodSymbol methodSymbol)
             {
-                var methodSymbol = (IMethodSymbol)symbol;
-                methodSymbol = methodSymbol.ReducedFrom != null ? methodSymbol.ReducedFrom : methodSymbol;
-                methodSymbol = methodSymbol.ConstructedFrom != null ? methodSymbol.ConstructedFrom : methodSymbol;
+                methodSymbol = methodSymbol.ReducedFrom ?? methodSymbol;
+                methodSymbol = methodSymbol.ConstructedFrom ?? methodSymbol;
                 return methodSymbol;
             }
 
@@ -88,33 +87,33 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.CallHierarchy
             {
                 var finders = new List<AbstractCallFinder>();
 
-                finders.Add(new MethodCallFinder(symbol, project, _asyncListener, this));
+                finders.Add(new MethodCallFinder(symbol, project.Id, _asyncListener, this));
 
                 if (symbol.IsVirtual || symbol.IsAbstract)
                 {
-                    finders.Add(new OverridingMemberFinder(symbol, project, _asyncListener, this));
+                    finders.Add(new OverridingMemberFinder(symbol, project.Id, _asyncListener, this));
                 }
 
                 var @overrides = await SymbolFinder.FindOverridesAsync(symbol, project.Solution, cancellationToken: cancellationToken).ConfigureAwait(false);
                 if (overrides.Any())
                 {
-                    finders.Add(new CallToOverrideFinder(symbol, project, _asyncListener, this));
+                    finders.Add(new CallToOverrideFinder(symbol, project.Id, _asyncListener, this));
                 }
 
                 if (symbol.OverriddenMember() != null)
                 {
-                    finders.Add(new BaseMemberFinder(symbol.OverriddenMember(), project, _asyncListener, this));
+                    finders.Add(new BaseMemberFinder(symbol.OverriddenMember(), project.Id, _asyncListener, this));
                 }
 
                 var implementedInterfaceMembers = await SymbolFinder.FindImplementedInterfaceMembersAsync(symbol, project.Solution, cancellationToken: cancellationToken).ConfigureAwait(false);
                 foreach (var implementedInterfaceMember in implementedInterfaceMembers)
                 {
-                    finders.Add(new InterfaceImplementationCallFinder(implementedInterfaceMember, project, _asyncListener, this));
+                    finders.Add(new InterfaceImplementationCallFinder(implementedInterfaceMember, project.Id, _asyncListener, this));
                 }
 
                 if (symbol.IsImplementableMember())
                 {
-                    finders.Add(new ImplementerFinder(symbol, project, _asyncListener, this));
+                    finders.Add(new ImplementerFinder(symbol, project.Id, _asyncListener, this));
                 }
 
                 return finders;
@@ -122,7 +121,7 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.CallHierarchy
 
             if (symbol.Kind == SymbolKind.Field)
             {
-                return SpecializedCollections.SingletonEnumerable(new FieldReferenceFinder(symbol, project, _asyncListener, this));
+                return SpecializedCollections.SingletonEnumerable(new FieldReferenceFinder(symbol, project.Id, _asyncListener, this));
             }
 
             return null;

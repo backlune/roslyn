@@ -64,7 +64,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Diagnostics.TypeStyle
                      && IsTypeApparentInDeclaration((VariableDeclarationSyntax)declaration, semanticModel, TypeStylePreference, cancellationToken);
 
                 IsInIntrinsicTypeContext =
-                        IsPredefinedTypeInDeclaration(declaration)
+                        IsPredefinedTypeInDeclaration(declaration, semanticModel)
                      || IsInferredPredefinedType(declaration, semanticModel, cancellationToken);
             }
 
@@ -77,7 +77,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Diagnostics.TypeStyle
                 var initializer = variableDeclaration.Variables.Single().Initializer;
                 var initializerExpression = GetInitializerExpression(initializer.Value);
                 var declaredTypeSymbol = semanticModel.GetTypeInfo(variableDeclaration.Type, cancellationToken).Type;
-                return TypeStyleHelper.IsTypeApparentInAssignmentExpression(stylePreferences, initializerExpression, semanticModel,cancellationToken, declaredTypeSymbol);
+                return TypeStyleHelper.IsTypeApparentInAssignmentExpression(stylePreferences, initializerExpression, semanticModel, cancellationToken, declaredTypeSymbol);
             }
 
             /// <summary>
@@ -89,10 +89,13 @@ namespace Microsoft.CodeAnalysis.CSharp.Diagnostics.TypeStyle
             /// to var. <see cref="SyntaxFacts.IsPredefinedType(SyntaxKind)"/> considers string
             /// and object but the compiler's implementation of IsIntrinsicType does not.
             /// </remarks>
-            private bool IsPredefinedTypeInDeclaration(SyntaxNode declarationStatement)
+            private bool IsPredefinedTypeInDeclaration(SyntaxNode declarationStatement, SemanticModel semanticModel)
             {
-                return TypeStyleHelper.IsPredefinedType(
-                    GetTypeSyntaxFromDeclaration(declarationStatement));
+                var typeSyntax = GetTypeSyntaxFromDeclaration(declarationStatement);
+
+                return typeSyntax != null
+                    ? semanticModel.GetTypeInfo(typeSyntax).Type?.IsSpecialType() == true
+                    : false;
             }
 
             private bool IsInferredPredefinedType(SyntaxNode declarationStatement, SemanticModel semanticModel, CancellationToken cancellationToken)
@@ -106,13 +109,13 @@ namespace Microsoft.CodeAnalysis.CSharp.Diagnostics.TypeStyle
 
             private TypeSyntax GetTypeSyntaxFromDeclaration(SyntaxNode declarationStatement)
             {
-                if (declarationStatement is VariableDeclarationSyntax)
+                if (declarationStatement is VariableDeclarationSyntax varDecl)
                 {
-                    return ((VariableDeclarationSyntax)declarationStatement).Type;
+                    return varDecl.Type;
                 }
-                else if (declarationStatement is ForEachStatementSyntax)
+                else if (declarationStatement is ForEachStatementSyntax forEach)
                 {
-                    return ((ForEachStatementSyntax)declarationStatement).Type;
+                    return forEach.Type;
                 }
 
                 return null;

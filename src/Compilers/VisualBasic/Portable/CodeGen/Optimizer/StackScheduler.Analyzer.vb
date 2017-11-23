@@ -2,6 +2,7 @@
 
 Imports System.Collections.Immutable
 Imports System.Runtime.InteropServices
+Imports Microsoft.CodeAnalysis.PooledObjects
 Imports Microsoft.CodeAnalysis.Text
 Imports Microsoft.CodeAnalysis.VisualBasic.Symbols
 Imports Microsoft.CodeAnalysis.VisualBasic.Syntax
@@ -15,7 +16,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.CodeGen
         ''' it will affect inference of stack behavior
         ''' it will also affect when expressions can be dup-reused
         '''     Example:
-        '''         Foo(x, ref x)     x cannot be duped as it is used in different context  
+        '''         Goo(x, ref x)     x cannot be duped as it is used in different context  
         ''' </summary>
         Private Enum ExprContext
             None
@@ -40,7 +41,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.CodeGen
             Private ReadOnly _container As Symbol
 
             Private _counter As Integer = 0
-            Private ReadOnly _evalStack As ArrayBuilder(Of ValueTuple(Of BoundExpression, ExprContext))
+            Private ReadOnly _evalStack As ArrayBuilder(Of (expression As BoundExpression, context As ExprContext))
             Private ReadOnly _debugFriendly As Boolean
 
             Private _context As ExprContext = ExprContext.None
@@ -145,7 +146,7 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.CodeGen
 
             Private Sub PushEvalStack(result As BoundExpression, context As ExprContext)
                 Debug.Assert(result IsNot Nothing OrElse context = ExprContext.None)
-                _evalStack.Add(ValueTuple.Create(result, context))
+                _evalStack.Add((result, context))
             End Sub
 
             Private Function StackDepth() As Integer
@@ -1266,9 +1267,9 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.CodeGen
             Private Function EvalStackHasLocal(local As LocalSymbol) As Boolean
                 Dim top = _evalStack.Last()
 
-                Return top.Item2 = If(Not local.IsByRef, ExprContext.Value, ExprContext.Address) AndAlso
-                   top.Item1.Kind = BoundKind.Local AndAlso
-                   DirectCast(top.Item1, BoundLocal).LocalSymbol = local
+                Return top.context = If(Not local.IsByRef, ExprContext.Value, ExprContext.Address) AndAlso
+                   top.expression.Kind = BoundKind.Local AndAlso
+                   DirectCast(top.expression, BoundLocal).LocalSymbol = local
             End Function
 
             Private Sub RecordVarWrite(local As LocalSymbol)

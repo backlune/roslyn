@@ -29,7 +29,7 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.Completion
             {
                 // Completions hadn't even been computed yet. Just cancel everything we're doing
                 // and move to the Inactive state.
-                this.StopModelComputation();
+                this.DismissSessionIfActive();
                 return;
             }
 
@@ -37,11 +37,7 @@ namespace Microsoft.CodeAnalysis.Editor.Implementation.IntelliSense.Completion
             // hasn't moved outside all of the items.  If so, we'd want to dismiss completions.
             // Just refilter the list, asking it to make sure that the caret is still within
             // bounds.
-            sessionOpt.FilterModel(
-                CompletionFilterReason.CaretPositionChanged,
-                dismissIfEmptyAllowed: false,
-                recheckCaretPosition: true,
-                filterState: null);
+            sessionOpt.FilterModel(CompletionFilterReason.CaretPositionChanged, filterState: null);
         }
 
         internal bool IsCaretOutsideAllItemBounds(Model model, SnapshotPoint caretPoint)

@@ -5,15 +5,18 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.Editor.SymbolMapping;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Shared.Extensions;
+using Microsoft.CodeAnalysis.SymbolMapping;
 using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.Editor.FindUsages
 {
     internal static class FindUsagesHelpers
     {
+        public static string GetDisplayName(ISymbol symbol)
+            => symbol.IsConstructor() ? symbol.ContainingType.Name : symbol.Name;
+
         /// <summary>
         /// Common helper for both the synchronous and streaming versions of FAR. 
         /// It returns the symbol we want to search for and the solution we should
@@ -69,7 +72,7 @@ namespace Microsoft.CodeAnalysis.Editor.FindUsages
                 symbol, project, cancellationToken).ConfigureAwait(false);
 
             var filteredSymbols = implementations.WhereAsArray(
-                s => !s.IsAbstract && s.Locations.Any(l => l.IsInSource));
+                s => s.Locations.Any(l => l.IsInSource));
 
             return filteredSymbols.Length == 0
                 ? (symbol, project, filteredSymbols, EditorFeaturesResources.The_symbol_has_no_implementations)

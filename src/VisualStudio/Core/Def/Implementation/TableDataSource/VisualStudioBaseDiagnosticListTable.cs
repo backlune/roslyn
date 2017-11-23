@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
+﻿// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 using System;
 using System.Collections.Generic;
@@ -33,7 +33,7 @@ namespace Microsoft.VisualStudio.LanguageServices.Implementation.TableDataSource
         };
 
         protected VisualStudioBaseDiagnosticListTable(
-            SVsServiceProvider serviceProvider, Workspace workspace, IDiagnosticService diagnosticService, ITableManagerProvider provider) :
+            SVsServiceProvider serviceProvider, Microsoft.CodeAnalysis.Workspace workspace, IDiagnosticService diagnosticService, ITableManagerProvider provider) :
             base(workspace, provider, StandardTables.ErrorsTable)
         {
         }
@@ -83,8 +83,11 @@ namespace Microsoft.VisualStudio.LanguageServices.Implementation.TableDataSource
             // We make sure not to use Uri.AbsoluteUri for the url displayed in the tooltip so that the url displayed in the tooltip stays human readable.
             if (helpUri != null)
             {
-                return string.Format(ServicesVSResources.Get_help_for_0_1_2_3, item.Id,
-                    isBing ? ServicesVSResources.from_Bing : null, Environment.NewLine, helpUri);
+                var prefix = isBing
+                    ? string.Format(ServicesVSResources.Get_help_for_0_from_Bing, item.Id)
+                    : string.Format(ServicesVSResources.Get_help_for_0, item.Id);
+
+                return $"{prefix}\r\n{helpUri}";
             }
 
             return null;

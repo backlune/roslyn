@@ -1,4 +1,4 @@
-' Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
+﻿' Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 Imports System.Threading
 Imports Microsoft.CodeAnalysis.Editor.Host
@@ -150,8 +150,7 @@ Namespace Microsoft.CodeAnalysis.Editor.VisualBasic.AutomaticEndConstructCorrect
         End Function
 
         Private Shared Function IsChangeOnSameLine(snapshot As ITextSnapshot, change As ITextChange) As Boolean
-            ' changes on same line
-            Return snapshot.GetLineNumberFromPosition(change.NewPosition) = snapshot.GetLineNumberFromPosition(change.NewEnd)
+            Return snapshot.AreOnSameLine(change.NewPosition, change.NewEnd)
         End Function
 
         Private Function IsChangeOnCorrectToken(token As SyntaxToken) As Boolean

@@ -7,11 +7,12 @@ using System.Linq;
 using Microsoft.CodeAnalysis.CSharp.Emit;
 using Microsoft.CodeAnalysis.CSharp.Symbols;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.PooledObjects;
 using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.CSharp.Symbols
 {
-    internal sealed class SourcePropertyAccessorSymbol : SourceMethodSymbol
+    internal sealed class SourcePropertyAccessorSymbol : SourceMemberMethodSymbol
     {
         private readonly SourcePropertySymbol _property;
         private ImmutableArray<ParameterSymbol> _lazyParameters;
@@ -252,6 +253,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                     _name = overriddenMethod.Name;
                 }
             }
+
+            CheckForBlockAndExpressionBody(
+                syntax.Body, syntax.ExpressionBody, syntax, diagnostics);
         }
 
         protected override void MethodChecks(DiagnosticBag diagnostics)
@@ -335,7 +339,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             get { return ImmutableArray<TypeParameterSymbol>.Empty; }
         }
 
-        internal override RefKind RefKind
+        public override ImmutableArray<TypeParameterConstraintClause> TypeParameterConstraintClauses
+            => ImmutableArray<TypeParameterConstraintClause>.Empty;
+
+        public override RefKind RefKind
         {
             get { return _property.RefKind; }
         }
@@ -555,9 +562,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             return parameters.ToImmutableAndFree();
         }
 
-        internal override void AddSynthesizedAttributes(ModuleCompilationState compilationState, ref ArrayBuilder<SynthesizedAttributeData> attributes)
+        internal override void AddSynthesizedAttributes(PEModuleBuilder moduleBuilder, ref ArrayBuilder<SynthesizedAttributeData> attributes)
         {
-            base.AddSynthesizedAttributes(compilationState, ref attributes);
+            base.AddSynthesizedAttributes(moduleBuilder, ref attributes);
 
             if (_isAutoPropertyAccessor)
             {

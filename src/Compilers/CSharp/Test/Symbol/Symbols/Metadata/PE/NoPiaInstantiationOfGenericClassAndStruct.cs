@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp.Test.Utilities;
 using Microsoft.CodeAnalysis.Text;
+using Roslyn.Test.Utilities;
 using Xunit;
 
 namespace Microsoft.CodeAnalysis.CSharp.UnitTests.Symbols.Metadata.PE
@@ -14,7 +15,7 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests.Symbols.Metadata.PE
     public class NoPiaInstantiationOfGenericClassAndStruct : CSharpTestBase
     {
         [Fact]
-        public void NoPiaIllegalGenericInstantiationSymboleForClassThatInheritsGeneric()
+        public void NoPiaIllegalGenericInstantiationSymbolForClassThatInheritsGeneric()
         {
             //Test class that inherits Generic<NoPIAType>
 
@@ -33,7 +34,7 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests.Symbols.Metadata.PE
         }
 
         [Fact]
-        public void NoPiaIllegalGenericInstantiationSymboleForGenericType()
+        public void NoPiaIllegalGenericInstantiationSymbolForGenericType()
         {
             //Test field with Generic(Of NoPIAType())
 
@@ -53,7 +54,7 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests.Symbols.Metadata.PE
         }
 
         [Fact]
-        public void NoPiaIllegalGenericInstantiationSymboleForFieldWithNestedGenericType()
+        public void NoPiaIllegalGenericInstantiationSymbolForFieldWithNestedGenericType()
         {
             //Test field with Generic(Of IGeneric(Of NoPIAType))
 
@@ -73,7 +74,7 @@ namespace Microsoft.CodeAnalysis.CSharp.UnitTests.Symbols.Metadata.PE
         }
 
         [Fact]
-        public void NoPiaIllegalGenericInstantiationSymboleForFieldWithTwoNestedGenericType()
+        public void NoPiaIllegalGenericInstantiationSymbolForFieldWithTwoNestedGenericType()
         {
             //Test field with IGeneric(Of IGeneric(Of Generic(Of NoPIAType)))
 
@@ -472,7 +473,7 @@ public class DrivedClass
         {
             //Test class that inherits Generic(Of NoPIAType)
 
-            var localConsumer = CreateCompilationWithMscorlib(assemblyName: "Dummy", sources: null,
+            var localConsumer = CreateStandardCompilation(assemblyName: "Dummy", sources: null,
                 references: new[]
                 {
                     TestReferences.SymbolsTests.NoPia.NoPIAGenericsAsm1,
@@ -487,7 +488,7 @@ public class DrivedClass
             Assert.Equal(SymbolKind.ErrorType, ((ArrayTypeSymbol)localField.Type).ElementType.Kind);
         }
 
-        [Fact]
+        [ConditionalFact(typeof(DesktopOnly))]
         public void NoPIAGenericsAssemblyRefsWithClassThatInheritsGenericOfNoPiaType()
         {
             //Test class that inherits Generic(Of NoPIAType)
@@ -503,7 +504,7 @@ public class DrivedClass
             Assert.True(localField.Type is ArrayTypeSymbol);
         }
 
-        [Fact]
+        [ConditionalFact(typeof(DesktopOnly))]
         public void NoPIAGenericsAssemblyRefs3()
         {
             //Test a static method that returns Generic(Of NoPIAType)
@@ -548,10 +549,10 @@ public class TypeRefs1
     }
 }";
 
-            var localType = CreateCompilationWithMscorlib(assemblyName: "Dummy", text: localTypeSource,
+            var localType = CreateStandardCompilation(assemblyName: "Dummy", text: localTypeSource,
                 references: new[] { TestReferences.SymbolsTests.NoPia.GeneralPia.WithEmbedInteropTypes(true) });
 
-            var localConsumer = CreateCompilationWithMscorlib(assemblyName: "Dummy", sources: null,
+            var localConsumer = CreateStandardCompilation(assemblyName: "Dummy", sources: null,
                 references: new MetadataReference[]
                 {
                     TestReferences.SymbolsTests.NoPia.GeneralPiaCopy,
@@ -572,7 +573,7 @@ public class TypeRefs1
 
         public CSharpCompilation CreateCompilation(string source)
         {
-            return CreateCompilationWithMscorlib(
+            return CreateStandardCompilation(
                 assemblyName: "Dummy",
                 sources: (null == source) ? null : new string[] { source },
                 references: new[]

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.PooledObjects;
 using Roslyn.Utilities;
 
 namespace Microsoft.CodeAnalysis.CodeFixes
@@ -32,7 +33,7 @@ namespace Microsoft.CodeAnalysis.CodeFixes
                 _documentDiagnosticsMap = ImmutableDictionary<Document, ImmutableArray<Diagnostic>>.Empty;
             }
 
-            internal override Task<ImmutableDictionary<Document, ImmutableArray<Diagnostic>>> GetDocumentDiagnosticsToFixAsync(
+            internal override Task<ImmutableDictionary<Document, ImmutableArray<Diagnostic>>> GetDocumentDiagnosticsToFixWorkerAsync(
                 FixAllContext context)
             {
                 return Task.FromResult(_documentDiagnosticsMap);

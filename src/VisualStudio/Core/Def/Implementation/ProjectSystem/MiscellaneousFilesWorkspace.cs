@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
+﻿// Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 using System;
 using System.Collections.Generic;
@@ -6,19 +6,24 @@ using System.Collections.Immutable;
 using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Editor;
+using Microsoft.CodeAnalysis.Editor.Shared.Utilities;
+using Microsoft.CodeAnalysis.Host;
+using Microsoft.CodeAnalysis.Scripting;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.VisualStudio.Editor;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio.TextManager.Interop;
 using Roslyn.Utilities;
-using Microsoft.CodeAnalysis.Editor.Shared.Utilities;
-using System.Threading.Tasks;
 
 namespace Microsoft.VisualStudio.LanguageServices.Implementation.ProjectSystem
 {
+    using Workspace = Microsoft.CodeAnalysis.Workspace;
+
     [Export(typeof(MiscellaneousFilesWorkspace))]
     internal sealed partial class MiscellaneousFilesWorkspace : Workspace, IVsRunningDocTableEvents2, IVisualStudioHostProjectContainer
     {
@@ -68,9 +73,9 @@ namespace Microsoft.VisualStudio.LanguageServices.Implementation.ProjectSystem
             saveEventsService.StartSendingSaveEvents();
         }
 
-        public void RegisterLanguage(Guid languageGuid, string languageName, string scriptExtension, ParseOptions parseOptions)
+        public void RegisterLanguage(Guid languageGuid, string languageName, string scriptExtension)
         {
-            _languageInformationByLanguageGuid.Add(languageGuid, new LanguageInformation(languageName, scriptExtension, parseOptions));
+            _languageInformationByLanguageGuid.Add(languageGuid, new LanguageInformation(languageName, scriptExtension));
         }
 
         internal void StartSolutionCrawler()
@@ -328,21 +333,48 @@ namespace Microsoft.VisualStudio.LanguageServices.Implementation.ProjectSystem
             // This should always succeed since we only got here if we already confirmed the moniker is acceptable
             var languageInformation = TryGetLanguageInformation(moniker);
             Contract.ThrowIfNull(languageInformation);
-            var parseOptions = languageInformation.ParseOptions;
 
-            if (Path.GetExtension(moniker) == languageInformation.ScriptExtension)
+            var languageServices = Services.GetLanguageServices(languageInformation.LanguageName);
+            var compilationOptionsOpt = languageServices.GetService<ICompilationFactoryService>()?.GetDefaultCompilationOptions();
+            var parseOptionsOpt = languageServices.GetService<ISyntaxTreeFactoryService>()?.GetDefaultParseOptions();
+
+            if (parseOptionsOpt != null && 
+                compilationOptionsOpt != null &&
+                PathUtilities.GetExtension(moniker) == languageInformation.ScriptExtension)
             {
-                parseOptions = parseOptions.WithKind(SourceCodeKind.Script);
+                parseOptionsOpt = parseOptionsOpt.WithKind(SourceCodeKind.Script);
+
+                var metadataService = Services.GetService<IMetadataService>();
+                var scriptEnvironmentService = Services.GetService<IScriptEnvironmentService>();
+
+                // Misc files workspace always provides the service:
+                Contract.ThrowIfNull(scriptEnvironmentService);
+
+                var baseDirectory = PathUtilities.GetDirectoryName(moniker);
+
+                // TODO (https://github.com/dotnet/roslyn/issues/5325, https://github.com/dotnet/roslyn/issues/13886): 
+                // - Need to have a way to specify these somewhere in VS options.
+                // - Use RuntimeMetadataReferenceResolver like in InteractiveEvaluator.CreateMetadataReferenceResolver
+                // - Add default namespace imports, default metadata references to match csi.rsp
+                // - Add default script globals available in 'csi goo.csx' environment: CommandLineScriptGlobals
+
+                var referenceResolver = new WorkspaceMetadataFileReferenceResolver(
+                    metadataService,
+                    new RelativePathResolver(scriptEnvironmentService.MetadataReferenceSearchPaths, baseDirectory));
+
+                compilationOptionsOpt = compilationOptionsOpt.
+                    WithMetadataReferenceResolver(referenceResolver).
+                    WithSourceReferenceResolver(new SourceFileResolver(scriptEnvironmentService.SourceReferenceSearchPaths, baseDirectory));
             }
 
             // First, create the project
-            var hostProject = new HostProject(this, CurrentSolution.Id, languageInformation.LanguageName, parseOptions, _metadataReferences);
+            var hostProject = new HostProject(this, CurrentSolution.Id, languageInformation.LanguageName, parseOptionsOpt, compilationOptionsOpt, _metadataReferences);
 
             // Now try to find the document. We accept any text buffer, since we've already verified it's an appropriate file in ShouldIncludeFile.
             var document = _documentProvider.TryGetDocumentForFile(
                 hostProject,
                 moniker,
-                parseOptions.Kind,
+                parseOptionsOpt?.Kind ?? SourceCodeKind.Regular,
                 getFolderNames: _ => SpecializedCollections.EmptyReadOnlyList<string>(),
                 canUseTextBuffer: _ => true);
 
@@ -453,16 +485,14 @@ namespace Microsoft.VisualStudio.LanguageServices.Implementation.ProjectSystem
 
         private class LanguageInformation
         {
-            public LanguageInformation(string languageName, string scriptExtension, ParseOptions parseOptions)
+            public LanguageInformation(string languageName, string scriptExtension)
             {
                 this.LanguageName = languageName;
                 this.ScriptExtension = scriptExtension;
-                this.ParseOptions = parseOptions;
             }
 
             public string LanguageName { get; }
             public string ScriptExtension { get; }
-            public ParseOptions ParseOptions { get; }
         }
     }
 }

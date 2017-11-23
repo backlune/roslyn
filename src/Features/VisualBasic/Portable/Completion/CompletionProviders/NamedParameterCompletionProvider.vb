@@ -1,4 +1,4 @@
-' Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
+﻿' Copyright (c) Microsoft.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information.
 
 Imports System.Collections.Immutable
 Imports System.Threading
@@ -43,12 +43,12 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Completion.Providers
             End If
 
             If token.Kind = SyntaxKind.CommaToken Then
-                For Each n In argumentList.Arguments.GetWithSeparators()
-                    If n.IsNode AndAlso DirectCast(n.AsNode(), ArgumentSyntax).IsNamed Then
-                        context.IsExclusive = True
-                        Exit For
-                    End If
-                Next
+                ' Consider refining this logic to mandate completion with an argument name, if preceded by an out-of-position name
+                ' See https://github.com/dotnet/roslyn/issues/20657
+                Dim languageVersion = DirectCast(document.Project.ParseOptions, VisualBasicParseOptions).LanguageVersion
+                If languageVersion < LanguageVersion.VisualBasic15_5 AndAlso token.IsMandatoryNamedParameterPosition() Then
+                    context.IsExclusive = True
+                End If
             End If
 
             Dim semanticModel = Await document.GetSemanticModelForNodeAsync(argumentList, cancellationToken).ConfigureAwait(False)
@@ -66,10 +66,10 @@ Namespace Microsoft.CodeAnalysis.VisualBasic.Completion.Providers
             Dim text = Await document.GetTextAsync(cancellationToken).ConfigureAwait(False)
 
             For Each parameter In unspecifiedParameters
-                context.AddItem(SymbolCompletionItem.Create(
+                context.AddItem(SymbolCompletionItem.CreateWithSymbolId(
                     displayText:=parameter.Name & s_colonEquals,
                     insertionText:=parameter.Name.ToIdentifierToken().ToString() & s_colonEquals,
-                    symbol:=parameter,
+                    symbols:=ImmutableArray.Create(parameter),
                     contextPosition:=position,
                     rules:=s_itemRules))
             Next
